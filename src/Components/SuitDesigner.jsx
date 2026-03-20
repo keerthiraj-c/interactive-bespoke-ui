@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useReducer } from "react";
 import "./SuitDesigner.css";
 
 const SUIT_PARTS = [
@@ -15,7 +15,6 @@ const SUIT_PARTS = [
 
 const COLORS = {
   jacket: [
-    { name: "Midnight", hex: "#1a1a2e" }, { name: "Charcoal", hex: "#2e2e2e" },
     { name: "Navy", hex: "#1b2a4a" }, { name: "Slate", hex: "#4a5568" },
     { name: "Espresso", hex: "#3b2314" },
   ],
@@ -29,12 +28,12 @@ const COLORS = {
     { name: "Forest", hex: "#2d5016" }, { name: "Gold", hex: "#c9a84c" },
     { name: "Onyx", hex: "#1a1a1a" },
   ],
-  trousers: [
+  trouser: [ 
     { name: "Midnight", hex: "#1a1a2e" }, { name: "Charcoal", hex: "#2e2e2e" },
     { name: "Navy", hex: "#1b2a4a" }, { name: "Stone", hex: "#9e8e78" },
     { name: "Slate", hex: "#4a5568" },
   ],
-  shoes: [
+  shoe: [ 
     { name: "Cognac", hex: "#7a3e1a" }, { name: "Onyx", hex: "#1a1a1a" },
     { name: "Chestnut", hex: "#5c2f1a" }, { name: "Tan", hex: "#b87a4a" },
     { name: "Mahogany", hex: "#400e09" },
@@ -71,6 +70,7 @@ const SuitFigure = ({ config }) => {
         <filter id="softShadow"><feDropShadow dx="2" dy="4" stdDeviation="3" floodOpacity="0.3" /></filter>
       </defs>
 
+      {/* Head */}
       <rect x="88" y="52" width="24" height="22" rx="4" fill="#d4a882" />
       <ellipse cx="100" cy="38" rx="22" ry="26" fill="#d4a882" />
       <ellipse cx="100" cy="18" rx="22" ry="12" fill="#3a2510" />
@@ -160,25 +160,45 @@ const SuitFigure = ({ config }) => {
   );
 };
 
+const enabledReducer = (state, action) => {
+  switch (action.type) {
+    case 'TOGGLE':
+      return { ...state, [action.id]: !state[action.id] };
+    case 'RESET':
+      return Object.fromEntries(SUIT_PARTS.map((p) => [p.id, true]));
+    default:
+      return state;
+  }
+};
+
 export default function SuitDesigner() {
   const [activeTab, setActiveTab] = useState("toggle");
-  const [enabled, setEnabled] = useState(Object.fromEntries(SUIT_PARTS.map((p) => [p.id, true])));
   const [colors, setColors] = useState({
-    jacketColor: "#1a1a2e", shirtColor: "#f5f0e8", tieColor: "#2255bb", trouserColor: "#1a1a2e", shoeColor: "#7a3e1a",
+    jacketColor: "#1a1a2e",
+    shirtColor: "#f5f0e8",
+    tieColor: "#2255bb",
+    trouserColor: "#1a1a2e", 
+    shoeColor: "#7a3e1a",    
   });
   const [activeColorSection, setActiveColorSection] = useState("jacket");
-  const [animating, setAnimating] = useState(false);
 
-  const total = SUIT_PARTS.filter((p) => enabled[p.id]).reduce((s, p) => s + p.price, 0);
+  const [enabled, dispatch] = useReducer(enabledReducer,
+    Object.fromEntries(SUIT_PARTS.map((p) => [p.id, true]))
+  );
 
-  const toggle = (id) => {
-    setAnimating(id);
-    setTimeout(() => setAnimating(false), 400);
-    setEnabled((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const total = useMemo(() => {
+    return SUIT_PARTS.filter((p) => enabled[p.id]).reduce((s, p) => s + p.price, 0);
+  }, [enabled]);
 
-  const colorMap = { jacket: "jacketColor", shirt: "shirtColor", tie: "tieColor", trousers: "trouserColor", shoes: "shoeColor" };
-  const colorableParts = ["jacket", "shirt", "tie", "trousers", "shoes"];
+  const toggle = useCallback((id) => {
+    dispatch({ type: 'TOGGLE', id });
+  }, []);
+
+  const changeColor = useCallback((part, hex) => {
+    setColors(prev => ({ ...prev, [part + "Color"]: hex }));
+  }, []);
+
+  const colorableParts = ["jacket", "shirt", "tie", "trouser", "shoe"]; 
 
   return (
     <div className="studio-container">
@@ -216,16 +236,25 @@ export default function SuitDesigner() {
                   key={part.id}
                   onClick={() => toggle(part.id)}
                   className={`piece-item ${enabled[part.id] ? "enabled" : ""}`}
-                  style={{ transform: animating === part.id ? "scale(0.97)" : "scale(1)" }}
                 >
                   <div className="piece-info">
-                    <span style={{ fontSize: "14px", opacity: enabled[part.id] ? 1 : 0.4 }}>{part.icon}</span>
-                    <span className="piece-label" style={{ color: enabled[part.id] ? "#e8dcc8" : "#554433" }}>
+                    <span style={{ fontSize: "14px", opacity: enabled[part.id] ? 1 : 0.4 }}>
+                      {part.icon}
+                    </span>
+                    <span
+                      className="piece-label"
+                      style={{ color: enabled[part.id] ? "#e8dcc8" : "#554433" }}
+                    >
                       {part.label}
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "11px", color: enabled[part.id] ? "#c9a84c" : "#443322" }}>${part.price}</span>
+                    <span style={{
+                      fontSize: "11px",
+                      color: enabled[part.id] ? "#c9a84c" : "#443322"
+                    }}>
+                      ${part.price}
+                    </span>
                     <div className={`toggle-switch ${enabled[part.id] ? "active" : ""}`}>
                       <div className="toggle-knob" />
                     </div>
@@ -249,17 +278,20 @@ export default function SuitDesigner() {
                   </button>
                 ))}
               </div>
+
               {COLORS[activeColorSection] && (
                 <div>
-                  <div className="card-label" style={{ marginBottom: "10px" }}>{activeColorSection} — colour</div>
+                  <div className="card-label" style={{ marginBottom: "10px" }}>
+                    {activeColorSection} — colour
+                  </div>
                   <div className="swatch-grid">
                     {COLORS[activeColorSection].map((c) => {
-                      const key = colorMap[activeColorSection];
-                      const isSelected = colors[key] === c.hex;
+                      const currentColor = colors[activeColorSection + "Color"];
+                      const isSelected = currentColor === c.hex;
                       return (
                         <div
                           key={c.hex}
-                          onClick={() => setColors((prev) => ({ ...prev, [key]: c.hex }))}
+                          onClick={() => changeColor(activeColorSection, c.hex)}
                           title={c.name}
                           className={`swatch ${isSelected ? "selected" : ""}`}
                           style={{ background: c.hex }}
@@ -267,8 +299,13 @@ export default function SuitDesigner() {
                       );
                     })}
                   </div>
-                  <div style={{ marginTop: "12px", fontSize: "12px", color: "#665544", fontStyle: "italic" }}>
-                    {COLORS[activeColorSection].find((c) => c.hex === colors[colorMap[activeColorSection]])?.name || "Custom"}
+                  <div style={{
+                    marginTop: "12px",
+                    fontSize: "12px",
+                    color: "#665544",
+                    fontStyle: "italic"
+                  }}>
+                    {COLORS[activeColorSection].find(c => c.hex === colors[activeColorSection + "Color"])?.name || "Custom"}
                   </div>
                 </div>
               )}
@@ -283,13 +320,17 @@ export default function SuitDesigner() {
             <div className="ground-shadow" />
             <SuitFigure config={{ enabled, ...colors }} />
           </div>
-          <div className="card-label" style={{ marginTop: "4px" }}>Bespoke Configuration</div>
+          <div className="card-label" style={{ marginTop: "4px" }}>
+            Bespoke Configuration
+          </div>
         </div>
 
         {/* Right Panel */}
         <div className="panel-right">
           <div className="control-card" style={{ padding: "20px" }}>
-            <div className="card-label" style={{ marginBottom: "16px" }}>Your Order</div>
+            <div className="card-label" style={{ marginBottom: "16px" }}>
+              Your Order
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
               {SUIT_PARTS.filter((p) => enabled[p.id]).map((p) => (
                 <div key={p.id} className="summary-item">
@@ -298,31 +339,59 @@ export default function SuitDesigner() {
                 </div>
               ))}
             </div>
-            <div style={{ height: "1px", background: "linear-gradient(90deg, transparent, rgba(201,168,76,0.4), transparent)", margin: "12px 0" }} />
+            <div style={{
+              height: "1px",
+              background: "linear-gradient(90deg, transparent, rgba(201,168,76,0.4), transparent)",
+              margin: "12px 0"
+            }} />
             <div className="total-container">
               <span className="card-label">Total</span>
               <span className="total-amount">${total.toLocaleString()}</span>
             </div>
           </div>
 
-          {/* Palette Preview */}
           <div className="control-card">
-            <div className="card-label" style={{ marginBottom: "12px" }}>Palette</div>
+            <div className="card-label" style={{ marginBottom: "12px" }}>
+              Palette
+            </div>
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              {Object.entries(colorMap).map(([part, key]) => (
-                <div key={part} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+              {colorableParts.map((part) => (
+                <div key={part} style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "4px"
+                }}>
                   <div style={{
-                    width: "28px", height: "28px", borderRadius: "50%", background: colors[key],
-                    border: "1px solid rgba(255,255,255,0.15)", boxShadow: "0 2px 8px rgba(0,0,0,0.5)"
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    background: colors[part + "Color"],
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)"
                   }} />
-                  <span style={{ fontSize: "8px", letterSpacing: "1px", color: "#554433", textTransform: "uppercase" }}>{part.slice(0, 3)}</span>
+                  <span style={{
+                    fontSize: "8px",
+                    letterSpacing: "1px",
+                    color: "#554433",
+                    textTransform: "uppercase"
+                  }}>
+                    {part.slice(0, 3)}
+                  </span>
                 </div>
               ))}
             </div>
           </div>
 
           <button className="cta-button">Commission Suit</button>
-          <div style={{ textAlign: "center", fontSize: "10px", color: "#443322", letterSpacing: "1px", lineHeight: 1.8, marginTop: "16px" }}>
+          <div style={{
+            textAlign: "center",
+            fontSize: "10px",
+            color: "#443322",
+            letterSpacing: "1px",
+            lineHeight: 1.8,
+            marginTop: "16px"
+          }}>
             Handcrafted in 6–8 weeks<br />Free worldwide delivery
           </div>
         </div>
